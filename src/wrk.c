@@ -18,6 +18,7 @@ static struct config {
     uint64_t rate;
     uint64_t delay_ms;
     bool     latency;
+    bool     no_keepalive;
     bool     u_latency;
     bool     dynamic;
     bool     record_all_responses;
@@ -61,6 +62,7 @@ static void usage() {
            "    -L  --latency          Print latency statistics   \n"
            "    -U  --u_latency        Print uncorrected latency statistics\n"
            "        --timeout     <T>  Socket/request timeout     \n"
+           "        --no-keepalive     Don't keep connection alive\n"
            "    -B, --batch_latency    Measure latency of whole   \n"
            "                           batches of pipelined ops   \n"
            "                           (as opposed to each op)    \n"
@@ -100,9 +102,9 @@ int main(int argc, char **argv) {
         sock.write    = ssl_write;
         sock.readable = ssl_readable;
     }
-	
+
     cfg.host = host;
-	
+
     signal(SIGPIPE, SIG_IGN);
     signal(SIGINT,  SIG_IGN);
 
@@ -119,7 +121,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "unable to connect to %s:%s %s\n", host, service, msg);
         exit(1);
     }
-    
+
     uint64_t connections = cfg.connections / cfg.threads;
     double throughput    = (double)cfg.rate / cfg.threads;
     uint64_t stop_at     = time_us() + (cfg.duration * 1000000);
@@ -559,7 +561,7 @@ static int response_complete(http_parser *parser) {
     }
 
 
-    if (!http_should_keep_alive(parser)) {
+    if (cfg.no_keepalive || !http_should_keep_alive(parser)) {
         reconnect_socket(thread, c);
         goto done;
     }
@@ -698,6 +700,7 @@ static struct option longopts[] = {
     { "script",         required_argument, NULL, 's' },
     { "header",         required_argument, NULL, 'H' },
     { "latency",        no_argument,       NULL, 'L' },
+    { "no-keepalive",   no_argument,       NULL, 'N' },
     { "u_latency",      no_argument,       NULL, 'U' },
     { "batch_latency",  no_argument,       NULL, 'B' },
     { "timeout",        required_argument, NULL, 'T' },
@@ -737,6 +740,9 @@ static int parse_args(struct config *cfg, char **url, struct http_parser_url *pa
                 break;
             case 'L':
                 cfg->latency = true;
+                break;
+            case 'N':
+                cfg->no_keepalive = true;
                 break;
             case 'B':
                 cfg->record_all_responses = false;
